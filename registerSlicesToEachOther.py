@@ -25,6 +25,7 @@ import nibabel as nib
 from scipy import ndimage
 import ants
 from skimage.transform import rescale, rotate
+import json
 
 fileLocation = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata','mouse_609882_registered_082725.h5ad')
 # list generated from selectGenePatterns, selecing only genes with strong patterns
@@ -66,6 +67,15 @@ def displaySingleSliceGeneImage(sliceNumber, geneMatrix, geneList, micronsToDisp
         plt.show()
     return gene_image
 
+# create registration function
+def rigidRegistration(fixedImage, movingImage):
+    regParamPath = os.path.join('/', 'home', 'zjpeters','Documents','stanly','code','reg_params', 'affine_2d.json')
+    params = json.loads(open(regParamPath).read())
+    fixedImage = ants.from_numpy(fixedImage)
+    movingImage = ants.from_numpy(movingImage)
+    affXfm = ants.registration(fixed=fixedImage, moving=movingImage, **params)
+    registeredImage = affXfm['warpedmovout']
+    return registeredImage.numpy()
 #%% load data from H5 files
 
 f = h5py.File(fileLocation)
@@ -108,7 +118,7 @@ short_gene_matrix = gene_matrix[:,gene_list_idx]
 
 #%% loop through all samples and plot gene image
 plt.close('all')
-allImages  = {"sliceNumber":[], "image":[], "rotation":[], "rotatedImage":[]}
+allImages  = {"sliceNumber":[], "image":[], "rotation":[], "rotatedImage":[], "registeredImage":[]}
 for i in sliceSortIdx:
     image = displaySingleSliceGeneImage(i, short_gene_matrix, listForGeneImage, pixelCombination='additive', displayImage=False)
     # plt.title(f'Slice {i}')
@@ -130,15 +140,13 @@ for i in range(len(sampleRotations['SliceNumber'])):
     plt.show()
 
 #%% select images to test translation
-"""
-Slice 36 (idx 30 within the allImages dictionary) has a good orientation as base
-"""
+
 plt.close('all')
 fixedImage = ants.from_numpy(allImages["rotatedImage"][30])
 movingImage = ants.from_numpy(allImages["rotatedImage"][31])
 
 #%% run rigid transform to see result
-affXfm = ants.registration(fixed=fixedImage, moving=movingImage, type_of_transform='Rigid')
+affXfm = ants.registration(fixed=fixedImage, moving=movingImage, type_of_transform='Rigid', verbose=True, convergance=[])
 # grad_step=0.2, flow_sigma=1, total_sigma=0, aff_metric='mattes', 
 #  aff_sampling=32, aff_random_sampling_rate=0.2, syn_metric='mattes',
 #  syn_sampling=32, reg_iterations=[100,40,20,0], aff_iterations=[2100,1200,1200,10],
@@ -147,3 +155,86 @@ fig, ax = plt.subplots(1,2)
 ax[0].imshow(fixedImage.numpy())
 ax[1].imshow(affXfm['warpedmovout'].numpy())
 plt.show()
+#%% create function to loop over all samples, starting with slice 36, moving outwards
+"""
+Slice 36 (idx 30 within the allImages dictionary) has a good orientation as base
+"""
+baseImageIdx = 30
+fixedImage = allImages['rotatedImage'][baseImageIdx]
+movingImage = allImages['rotatedImage'][baseImageIdx+1]
+regImages = [fixedImage]
+regImage = rigidRegistration(regImages[-1], movingImage)
+plt.figure()
+plt.imshow(movingImage)
+plt.show()
+plt.figure()
+plt.imshow(regImage)
+plt.show()
+#%% perform looping registration
+# first start at 30 and move to end
+
+baseImageIdx = 30
+fixedImage = allImages['rotatedImage'][baseImageIdx]
+regImages = [fixedImage]
+plt.close('all')
+for i in range(baseImageIdx+1, 59):
+    movingImage = allImages['rotatedImage'][i]
+    regImage = rigidRegistration(regImages[-1], movingImage)
+    fig, ax = plt.subplots(1,3)
+    ax[0].imshow(regImages[-1])
+    ax[1].imshow(regImage)
+    ax[2].imshow(regImages[-1])
+    ax[2].imshow(regImage, cmap='gray_r', alpha=0.4)
+    plt.show()
+    regImages.append(regImage)
+
+#%% now work on the first half of the dataset
+regImagesFirstHalf = [fixedImage]
+plt.close('all')
+for i in range(baseImageIdx-1, 0, -1):
+    movingImage = allImages['rotatedImage'][i]
+    regImage = rigidRegistration(regImagesFirstHalf[-1], movingImage)
+    fig, ax = plt.subplots(1,3)
+    ax[0].imshow(regImagesFirstHalf[-1])
+    ax[1].imshow(regImage)
+    ax[2].imshow(regImagesFirstHalf[-1])
+    ax[2].imshow(regImage, cmap='gray_r', alpha=0.4)
+    plt.show()
+    regImagesFirstHalf.append(regImage)
+
+#%% try assembling registered images into volume
+
+imageVolume = np.zeros([601, 601, 58])
+countdown = range(len(regImagesFirstHalf), -1, -1)
+for i in range(len(regImagesFirstHalf)):
+    imageVolume[:,:,countdown[i]] = regImagesFirstHalf[i] 
+
+countup = range(baseImageIdx, baseImageIdx+len(regImages)+1)
+for i in range(len(regImages)):
+    imageVolume[:,:,countup[i]] = regImages[i] 
+
+#%% convert to nifti
+
+affMatrix = np.array([[1, 0, 0, 0],[0, 1, 0, 0], [0, 0, 10, 0], [0,0,0,1]])
+niiImage = nib.Nifti1Image(imageVolume, affMatrix)
+header_info = niiImage.header
+header_info['pixdim'][1:4]  = [1,1,10]
+niiImage = nib.Nifti1Image(imageVolume, affMatrix, header_info)
+x = np.where(imageVolume > 0)
+imageMask = np.zeros([601, 601, 58])
+imageMask[imageVolume > 0] = 1
+niiMask = nib.Nifti1Image(imageMask, affMatrix, header_info)
+### original save, can overwrite if wanting a new image
+# nib.save(niiImage, os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives', 'geneImageInSliceSpace.nii'))
+# nib.save(niiMask, os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives', 'geneImageInSliceSpaceMask.nii'))
+
+# load images
+niiImage = nib.load(os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives', 'geneImageInSliceSpace.nii'))
+niiMask = nib.load(os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives', 'geneImageInSliceSpaceMask.nii'))
+#%% convert image to ants for segmentation
+ants3dImage = ants.from_numpy(np.array(niiImage.dataobj)*255)
+testMask = ants.get_mask(ants3dImage)
+ants3dMask = ants.from_numpy(np.array(niiMask.dataobj)*255)
+#%% segmentation
+
+volSeg = ants.atropos(ants3dImage, x = ants3dMask)
