@@ -137,3 +137,42 @@ def displaySingleSliceGeneImage(sample, geneList, micronsToDisplay=25, pixelComb
         # plt.scatter(slice_coordinates[:,0], slice_coordinates[:,1], s=1)
         plt.show()
     return gene_image
+
+def displaySingleSliceGeneImageCCF(sample, geneList, pixelCombination='additive', displayImage=True, scaleImage=True):
+    ### comments below are from before assembling 'sample' dictionary from loadSingleSliceFromH5ad
+    # sliceIdx = np.where(slice_codes == sliceNumber)[0]
+    slice_coordinates = np.array([sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1]]).T
+    # should double check that this can probably be replaced with 'slice_coordinates'
+    # image_size = np.round(np.max(slice_coordinates, axis=0))
+    gene_image = np.zeros([360, 480])
+    for actGene in enumerate(geneList):
+        geneArray = sample['geneMatrix'].todense()[:, [actGene[0]]]
+        geneArray = geneArray/np.max(geneArray)
+        geneMask = np.squeeze(np.array(geneArray > 0))
+        geneCoordinates = slice_coordinates[geneMask,:]
+        genePixelNum = actGene[0] + 1
+        for coordinate in enumerate(geneCoordinates):
+            xCoor = int(coordinate[1][1])
+            yCoor = int(coordinate[1][0])
+            # print(coordinate[1], xCoor)
+            if pixelCombination == 'additive':
+                # print(xCoor, yCoor, genePixelNum)
+                gene_image[xCoor, yCoor] += genePixelNum
+            elif pixelCombination == 'replace':
+                gene_image[xCoor, yCoor] = genePixelNum
+            elif pixelCombination == 'geneExpressionScaledReplace':
+                gene_image[xCoor, yCoor] = genePixelNum * geneArray[:,coordinate[0]]
+            elif pixelCombination == 'geneExpressionScaledAdditive':
+                gene_image[xCoor, yCoor] += genePixelNum * geneArray[coordinate[0]]
+            elif pixelCombination == 'geneExpression':
+                gene_image[xCoor, yCoor] += geneArray[coordinate[0]]
+    if scaleImage == True:
+        gene_image = np.array(gene_image / np.max(gene_image) * 255, dtype='uint8')
+    else:
+        gene_image = np.array(gene_image)
+    if displayImage == True:
+        plt.figure()
+        plt.imshow(gene_image, cmap='gray')    
+        # plt.scatter(slice_coordinates[:,0], slice_coordinates[:,1], s=1)
+        plt.show()
+    return gene_image
