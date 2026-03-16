@@ -176,3 +176,16 @@ def displaySingleSliceGeneImageCCF(sample, geneList, pixelCombination='additive'
         # plt.scatter(slice_coordinates[:,0], slice_coordinates[:,1], s=1)
         plt.show()
     return gene_image
+
+def viewGeneInSample(sample, gene, setDisplayMax=None):
+    try:
+        geneIdx = sample['geneList'].index(gene)
+        geneArray = np.squeeze(np.array(sample['geneMatrix'][:,geneIdx].todense()))
+        fig,ax = plt.subplots(1,1)
+        geneScatter = ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=geneArray, cmap='Reds', s=2, vmax=setDisplayMax)
+        ax.yaxis.set_inverted(True)
+        plt.title(gene)
+        fig.colorbar(geneScatter, fraction=0.046, pad=0.04)
+        plt.show()
+    except ValueError:
+        print(f'{gene} not in list')

@@ -13,7 +13,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from brainglobe_atlasapi import BrainGlobeAtlas
 import sys
-sys.path.insert(0, "/home/zjpeters/Documents/stanly/code")
+sys.path.insert(0, os.path.join('C:',os.sep, 'Users','onyh19ug', 'Documents', 'STANLY','code'))
+# sys.path.insert(0, "/home/zjpeters/Documents/stanly/code")
 import stanly
 import scipy.sparse as sp_sparse
 import scipy.spatial as sp_spatial
@@ -22,13 +23,18 @@ import scipy
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_samples, silhouette_score
 import nibabel as nib
-sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
+sys.path.insert(0, os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','code'))
+# sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
 import allenMerscopeCode
 import cv2
 import nibabel as nib
 
-sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
-derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
+# windows workstation locations
+sourcedata = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','sourcedata')
+derivatives = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','derivatives')
+# linux locations
+# sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
+# derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
 h5adLocation = os.path.join(sourcedata,'mouse_638850_registered.h5ad')
 # list generated from selectGenePatterns, selecing only genes with strong patterns
 listForGeneImage = ['Prdm12', 'Mal', 'Nts', 'Cbln1', 'Col1a1', 'Cdh13', 'Ramp1', 'Rgs6', 'Gpr88', 'Rorb', 'Slc17a7', 'Pou3f1', 'Zfpm2', 'Pvalb', 'Slc1a3']
@@ -93,7 +99,7 @@ for filename in listOfFiles:
     for i in range(nSlices + 1):
         sample = allenMerscopeCode.loadSingleSliceFromH5ad(os.path.join(sourcedata, filename), i)
         if ~np.any(np.isnan(sample['ccfCoordinates'])) and len(sample['ccfCoordinates'] > 0):
-            geneImage = allenMerscopeCode.displaySingleSliceGeneImageCCF(sample, listForGeneImage, displayImage=False)
+            geneImage = allenMerscopeCode.displaySingleSliceGeneImageCCF(sample, listForGeneImage, displayImage=False, scaleImage=False)
             print(np.mean(sample['ccfCoordinates'][:,0]))
             meanAllSamplesCCFZ.append(np.mean(sample['ccfCoordinates'][:,0]))
             allImagesAllSamplesCCF.append(geneImage)
@@ -109,7 +115,7 @@ for i in enumerate(imageSortIdx):
 affMatrix = np.array([[-0, -0, 0.025, -5.7],[-0.025, -0, -0, 5.3], [0, -0.025, 0, 5.175], [0,0,0,1]])
 niiImage = nib.Nifti1Image(np.array(sortedImageVolume), affMatrix)
 
-nib.save(niiImage, os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives', 'geneImage_mouse_all_samples.nii'))
+nib.save(niiImage, os.path.join(derivatives, 'geneImage_mouse_all_samples_unscaled.nii'))
 
 #%% loop through all samples from the allen institute and concatenate the ccf coordinates
 
