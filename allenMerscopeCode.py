@@ -48,7 +48,7 @@ def loadEntireDatasetFromH5ad(h5adLocation):
     merscopeDataset = {'geneMatrix': gene_matrix, 'geneList': gene_list, 'tissuePositionCoordinates': tissue_coordinates, 'sliceCodes': slice_codes, 'ccfCoordinates': ccfCoordinates}
     return merscopeDataset
 
-def loadSingleSliceFromH5ad(h5adLocation, sliceNumber, displayScatter=False):
+def loadSingleSliceFromH5ad(h5adLocation, zCoord, displayScatter=False):
     """
     Loads a single slice from an h5ad formatted sample from the Allen Institute
 
@@ -56,8 +56,8 @@ def loadSingleSliceFromH5ad(h5adLocation, sliceNumber, displayScatter=False):
     ----------
     h5adLocation : str or file location
         Where the allen data is stored.
-    sliceNumber : int
-        Overall slice number, not the slice from CCF.
+    zCoord : int
+        Slice location, multiple of 200, i.e. 0, 200, 400, ..., 10000
     displayScatter : bool, optional
         DESCRIPTION. The default is False.
 
@@ -71,8 +71,10 @@ def loadSingleSliceFromH5ad(h5adLocation, sliceNumber, displayScatter=False):
     f = h5py.File(h5adLocation)
     x_attrs = dict(f['X'].attrs)
     # slice_codes = (f['obs']['brain_section_barcode']['codes'][:])
-    slice_codes = f['obs']['section']['codes'][:]
-    sliceIdx = np.where(slice_codes == sliceNumber)[0]
+    # slice_codes = f['obs']['section']['codes'][:]
+    sample['z_coord'] = f['obs']['z_coord'][:]
+    sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
+    sample['z_coord'] = f['obs']['z_coord'][sliceIdx]
     try:
         gene_matrix = csr_matrix((f['X']['data'],f['X']['indices'],f['X']['indptr']),x_attrs['shape'])
         sample['geneMatrix'] = gene_matrix[sliceIdx,:]
@@ -99,7 +101,69 @@ def loadSingleSliceFromH5ad(h5adLocation, sliceNumber, displayScatter=False):
         # plt.show()
     return sample
 
-def displaySingleSliceGeneImage(sample, geneList, micronsToDisplay=25, pixelCombination='additive', displayImage=True, scaleImage=True):
+def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, removeNaNs=True):
+    """
+    Loads a single slice from an h5ad formatted sample from the Allen Institute
+
+    Parameters
+    ----------
+    h5adLocation : str or file location
+        Where the allen data is stored.
+    sliceNumber : int
+        Overall slice number, not the slice from CCF.
+    displayScatter : bool, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    sample : TYPE
+        DESCRIPTION.
+
+    """
+    sample = {}
+    f = h5py.File(h5adLocation)
+    x_attrs = dict(f['X'].attrs)
+    # slice_codes = (f['obs']['brain_section_barcode']['codes'][:])
+    # slice_codes = f['obs']['brain_section_label']['codes'][:]
+    # sliceIdx = np.where(slice_codes == sliceNumber)[0]
+    sample['z_coord'] = f['obs']['z_coord'][:]
+    print(f['obs']['sex']['codes'])
+    sample['sex'] = f['obs']['sex']['codes'][100]
+    sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
+    sample['polygon_center'] = np.array([f['obs']['polygon_center_x'][sliceIdx], f['obs']['polygon_center_y'][sliceIdx], f['obs']['polygon_center_z'][sliceIdx]]).T
+    if removeNaNs==True:
+        nanMask = np.any(~np.isnan(sample['polygon_center']), axis=1)
+        sliceIdx = sliceIdx[nanMask]
+        sample['polygon_center'] = np.array([f['obs']['polygon_center_x'][sliceIdx], f['obs']['polygon_center_y'][sliceIdx], f['obs']['polygon_center_z'][sliceIdx]]).T
+    sample['z_coord'] = f['obs']['z_coord'][sliceIdx]
+    try:
+        gene_matrix = csr_matrix((f['X']['data'],f['X']['indices'],f['X']['indptr']),x_attrs['shape'])
+        sample['geneMatrix'] = gene_matrix[sliceIdx,:]
+    except ValueError:
+        sample['geneMatrix'] = csr_matrix(f['X'][sliceIdx,:])
+    sample['geneList'] = list(np.array(f['var']['_index']))
+    # convert byte strings to strings
+    for i in range(len(sample['geneList'])):
+        sample['geneList'][i] = sample['geneList'][i].decode("utf-8")
+    sample['tissuePositionCoordinates'] = f['obsm']['spatial'][sliceIdx,0:2]
+    # = polygon_center_coors[:, sliceIdx]
+    # x_CCF = f['obs']['x_CCF'][sliceIdx]
+    # y_CCF = f['obs']['y_CCF'][sliceIdx]
+    # z_CCF = f['obs']['z_CCF'][sliceIdx]    
+    sample['ccfCoordinates'] = np.array([f['obs']['x_CCF'][sliceIdx], f['obs']['y_CCF'][sliceIdx], f['obs']['z_CCF'][sliceIdx]]).T
+    f.close()
+    if displayScatter == True:
+        fig,ax = plt.subplots(1,1)
+        ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1])
+        ax.yaxis.set_inverted(True)
+        plt.show()
+        # plt.figure()
+        # plt.scatter(sample['tissuePositionCoordinates'][:,0], sample['tissuePositionCoordinates'][:,1], s=3)
+        # plt.show()
+    return sample
+
+def displaySingleSliceGeneImage(sample, geneList, micronsToDisplay=25, 
+                                pixelCombination='additive', displayImage=True, scaleImage=True):
     ### comments below are from before assembling 'sample' dictionary from loadSingleSliceFromH5ad
     # sliceIdx = np.where(slice_codes == sliceNumber)[0]
     slice_coordinates = sample['tissuePositionCoordinates']/micronsToDisplay
@@ -138,7 +202,8 @@ def displaySingleSliceGeneImage(sample, geneList, micronsToDisplay=25, pixelComb
         plt.show()
     return gene_image
 
-def displaySingleSliceGeneImageCCF(sample, geneList, pixelCombination='additive', displayImage=True, scaleImage=True):
+def displaySingleSliceGeneImageCCF(sample, geneList, pixelCombination='additive', 
+                                   displayImage=True, scaleImage=True):
     ### comments below are from before assembling 'sample' dictionary from loadSingleSliceFromH5ad
     # sliceIdx = np.where(slice_codes == sliceNumber)[0]
     slice_coordinates = np.array([sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1]]).T
@@ -189,3 +254,52 @@ def viewGeneInSample(sample, gene, setDisplayMax=None):
         plt.show()
     except ValueError:
         print(f'{gene} not in list')
+        
+def calculateNativeToCCFTransform(sample, coorType='polygon_center', 
+                                  swapDims=True, displayScatter=False):
+    """
+    Calculate the affine transformation required to transform between native
+    and CCF spaces as given in the data
+
+    Parameters
+    ----------
+    sample : dict
+        The sample format generated by the loadSingleSliceFromH5ad function.
+    coorType : str, optional
+        Which set of coordinates to calculate the transformation from. Default
+        is 'polygon_center', could also use 'tissuePositionCoordinates'
+    swapDims : bool, optional
+        Whether to swap the X and Y coordinate positions in the sample file.
+    displayScatter : bool, optional
+        Whether to display the comparison of the transformation. The default is False.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    if swapDims==True:
+        X = np.array([sample[coorType][:,1], sample[coorType][:,0], np.ones_like(sample[coorType][:,0])]).T
+        Y = np.array([sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], np.ones_like(sample['ccfCoordinates'][:,1])]).T
+    else:
+        X = np.array([sample[coorType][:,0], sample[coorType][:,1], np.ones_like(sample[coorType][:,0])]).T
+        Y = np.array([sample['ccfCoordinates'][:,1], sample['ccfCoordinates'][:,2], np.ones_like(sample['ccfCoordinates'][:,1])]).T
+        x = np.linalg.lstsq(X,Y, rcond=None)
+    x = np.linalg.lstsq(X,Y, rcond=None)
+
+    calculatedCoors = X @ x[0]
+    if displayScatter==True:
+        fig, ax = plt.subplots(1,3)
+        ax[0].scatter(Y[:,0],Y[:,1], s=2)
+        ax[0].set_aspect('equal', adjustable='box')
+        ax[0].set_title('Original transformation')
+        ax[1].scatter(calculatedCoors[:,0], calculatedCoors[:,1], s=2)
+        ax[1].set_aspect('equal', adjustable='box')
+        ax[1].set_title('Calculated transformation')
+        ax[2].scatter(Y[:,0],Y[:,1], s=2)
+        ax[2].scatter(calculatedCoors[:,0], calculatedCoors[:,1], s=2, alpha=0.4)
+        ax[2].set_aspect('equal', adjustable='box')
+        ax[2].set_title('Calculated over CCF')
+        plt.show()
+    return x[0]

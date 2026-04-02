@@ -24,7 +24,7 @@ import scipy.sparse as sp_sparse
 # from sklearn.metrics import silhouette_samples, silhouette_score
 import nibabel as nib
 sys.path.insert(0, os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','code'))
-sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
+# sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
 import allenMerscopeCode
 import cv2
 import nibabel as nib
@@ -38,13 +38,13 @@ stanlyLoc = os.path.join('C:',os.sep, 'Users','onyh19ug', 'Documents', 'STANLY',
 sourcedata = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','sourcedata')
 derivatives = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','derivatives')
 # linux locations
-stanlyLoc = os.path.join('/', 'home', 'zjpeters', 'Documents', 'stanly', 'code')
-sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
-derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
+# stanlyLoc = os.path.join('/', 'home', 'zjpeters', 'Documents', 'stanly', 'code')
+# sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
+# derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
 
 affMatrix = np.array([[-0, -0, 0.025, -5.7],[-0.25, -0, -0, 5.3], [0, -0.025, 0, 5.175], [0,0,0,1]])
 
-h5adLocation = os.path.join(sourcedata,'mouse_638850_registered.h5ad')
+h5adLocation = os.path.join(sourcedata,'mouse_609882_registered.h5ad')
 # list generated from selectGenePatterns, selecing only genes with strong patterns
 listForGeneImage = ['Prdm12', 'Mal', 'Nts', 'Cbln1', 'Col1a1', 'Cdh13', 'Ramp1', 'Rgs6', 'Gpr88', 'Rorb', 'Slc17a7', 'Pou3f1', 'Zfpm2', 'Pvalb', 'Slc1a3']
 
@@ -52,7 +52,7 @@ listOfFiles = ['mouse_609882_registered.h5ad', 'mouse_609889_registered.h5ad',
                'mouse_638850_registered.h5ad', 'mouse_658801_registered.h5ad', 
                'mouse_687997_registered.h5ad', 'mouse_702265_registered.h5ad']
 
-housekeepingGenes = ['Gadph', 'Actb', 'B2m', 'Hprt', 'Cyc1', 'Eifa2']
+housekeepingGenes = ['Gapdh', 'Actb', 'B2m', 'Hprt', 'Cyc1', 'Eif2a']
 
 # create dictionary with information about different interneuron types
 interneuron_information = dict.fromkeys(["Pvalb", "Sst", "Vip", "Sncg", "Lamp5"])
@@ -92,7 +92,7 @@ imageSortIdx = np.argsort(meanAllSamplesCCFZ)
             
 #%% look for housekeeping genes within sample
 
-sample = allenMerscopeCode.loadSingleSliceFromH5ad(h5adLocation, 20)
+sample = allenMerscopeCode.loadSingleSliceFromDatedH5ad(h5adLocation, 10)
 
 for gene in housekeepingGenes:
     try:
@@ -104,12 +104,21 @@ for gene in housekeepingGenes:
 None of the original list appear in the allen data, will look over other resources
 """
 #%% identify overlapping genes
-for interneuron_type in interneuron_information.keys():
+interneuronGenesInMerscope = dict.fromkeys(["Pvalb", "Sst", "Vip", "Sncg", "Lamp5"])
+for i in interneuronGenesInMerscope.keys():
+    interneuronGenesInMerscope[i] = dict.fromkeys(['geneList', 'geneIdx'])
+for interneuron_type in interneuronGenesInMerscope.keys():
     interneuron_gene_idx = []
+    interneuron_gene_list = []
     for gene in interneuron_information[interneuron_type]['geneList']:
-        geneIdx = sample['geneList'].index(gene)
-        interneuron_gene_idx.append(geneIdx)
-    interneuron_information[interneuron_type]['geneIdx'] = np.array(interneuron_gene_idx)
+        try:
+            geneIdx = sample['geneList'].index(gene)
+            interneuron_gene_list.append(gene)
+            interneuron_gene_idx.append(geneIdx)
+        except ValueError:
+            print('Gene not in list')
+    interneuronGenesInMerscope[interneuron_type]['geneIdx'] = np.array(interneuron_gene_idx)
+    interneuronGenesInMerscope[interneuron_type]['geneList'] = interneuron_gene_list
     
 #%%
 # casefoldGeneList = []
@@ -144,6 +153,16 @@ for i in cellTypes:
             # are situations where a casefold gene name would lead to duplicates
             print('Gene not found')
 
+for interneuron_type in interneuron_information.keys():
+    singleCellTypeGeneList = []
+    for gene in interneuron_information[interneuron_type]['geneList']:
+        try:
+            geneIdx = sample['geneList'].index(gene)
+            singleCellTypeGeneList.append([gene, geneIdx])
+            cellTypeGeneLists[interneuron_type] = np.array(singleCellTypeGeneList)
+        except ValueError:
+            print('Gene not in list')
+    
 # for i in interneuron_information:
 #     singleCellTypeGeneList = np.array([interneuron_information[i]['geneList'], interneuron_information[i]['geneIdx']])
 #     cellTypeGeneLists[i] = singleCellTypeGeneList.T
@@ -247,7 +266,7 @@ ax.legend(handles=handles,bbox_to_anchor=(0.8, 1))
 ax.set_aspect('equal')
 ax.axis('off')
 plt.show()
-plt.savefig(os.path.join(derivatives, f'testImage.svg'), bbox_inches='tight', dpi=300)
+# plt.savefig(os.path.join(derivatives, f'testImage.svg'), bbox_inches='tight', dpi=300)
 #%% loop over samples and identify cell types in each then save image
 for filename in enumerate(listOfFiles[2:]):
     print(f'Processing {filename[1]}')
@@ -256,7 +275,7 @@ for filename in enumerate(listOfFiles[2:]):
     f.close()
     filenameForSaving = filename[1].split(".")[0]
     for sliceCode in range(len(slice_codes)):
-        if os.path.exists(os.path.join(derivatives, f'cellTypeLabelling_sample{filenameForSaving}_slice{sliceCode}.svg')):
+        if os.path.exists(os.path.join(derivatives, f'cellTypeLabelling_sample{filenameForSaving}_slice{sliceCode}.png')):
             print(f'cellTypeLabelling_sample{filenameForSaving}_slice{sliceCode}.svg')
         else:
             sample = allenMerscopeCode.loadSingleSliceFromH5ad(os.path.join(sourcedata, filename[1]), sliceCode)
