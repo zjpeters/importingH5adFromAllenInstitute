@@ -5,6 +5,7 @@ Created on Tue Feb 24 09:39:09 2026
 
 @author: zjpeters
 """
+import os
 import h5py
 from scipy.sparse import csr_matrix
 import scipy.sparse as sp_sparse
@@ -126,9 +127,11 @@ def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, rem
     # slice_codes = (f['obs']['brain_section_barcode']['codes'][:])
     # slice_codes = f['obs']['brain_section_label']['codes'][:]
     # sliceIdx = np.where(slice_codes == sliceNumber)[0]
+    sample['original_filename'] = h5adLocation.split(os.sep)[-1]
     sample['z_coord'] = f['obs']['z_coord'][:]
-    print(f['obs']['sex']['codes'])
-    sample['sex'] = f['obs']['sex']['codes'][100]
+    # sex and age are stored as strings in the categories section
+    sample['sex'] = f['obs']['sex']['categories'][0].decode("utf-8")
+    sample['age'] = f['obs']['age']['categories'][0].decode("utf-8")
     sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
     sample['polygon_center'] = np.array([f['obs']['polygon_center_x'][sliceIdx], f['obs']['polygon_center_y'][sliceIdx], f['obs']['polygon_center_z'][sliceIdx]]).T
     if removeNaNs==True:
@@ -146,11 +149,19 @@ def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, rem
     for i in range(len(sample['geneList'])):
         sample['geneList'][i] = sample['geneList'][i].decode("utf-8")
     sample['tissuePositionCoordinates'] = f['obsm']['spatial'][sliceIdx,0:2]
-    # = polygon_center_coors[:, sliceIdx]
-    # x_CCF = f['obs']['x_CCF'][sliceIdx]
-    # y_CCF = f['obs']['y_CCF'][sliceIdx]
-    # z_CCF = f['obs']['z_CCF'][sliceIdx]    
     sample['ccfCoordinates'] = np.array([f['obs']['x_CCF'][sliceIdx], f['obs']['y_CCF'][sliceIdx], f['obs']['z_CCF'][sliceIdx]]).T
+    # cell type class for each cell is stored in the 'codes' section of the 'hrc_mmc_class_name' key
+    sample['cellTypeClassInt'] = f['obs']['hrc_mmc_class_name']['codes'][sliceIdx]
+    # the mapping of cell type class integer to a string is stored in the 'categories' section of 'hrc_mmc_class_name'
+    sample['cellTypeClassNames'] = f['obs']['hrc_mmc_class_name']['categories'][:]
+    for i in range(len(sample['cellTypeClassNames'])):
+        sample['cellTypeClassNames'][i] = sample['cellTypeClassNames'][i].decode("utf-8")
+    sample['cellTypeClassNames'] = list(sample['cellTypeClassNames'])
+    sample['cellTypeClassColorHex'] = np.zeros_like(f['obs']['hrc_mmc_class_color']['codes'][sliceIdx], dtype=np.dtype('U7'))
+    for i in range(len(f['obs']['hrc_mmc_class_color']['categories'][:])):
+        hexIdx = np.where(f['obs']['hrc_mmc_class_color']['codes'][sliceIdx] == i)[0]
+        sample['cellTypeClassColorHex'][hexIdx] = f['obs']['hrc_mmc_class_color']['categories'][i].decode("utf-8")
+    sample['ccfID'] = f['obs']['ccf_id'][sliceIdx]
     f.close()
     if displayScatter == True:
         fig,ax = plt.subplots(1,1)
@@ -247,8 +258,9 @@ def viewGeneInSample(sample, gene, setDisplayMax=None):
         geneIdx = sample['geneList'].index(gene)
         geneArray = np.squeeze(np.array(sample['geneMatrix'][:,geneIdx].todense()))
         fig,ax = plt.subplots(1,1)
-        geneScatter = ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=geneArray, cmap='Reds', s=2, vmax=setDisplayMax)
+        geneScatter = ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=geneArray, cmap='Reds', s=2, vmax=setDisplayMax, linewidth=0)
         ax.yaxis.set_inverted(True)
+        plt.axis('off')
         plt.title(gene)
         fig.colorbar(geneScatter, fraction=0.046, pad=0.04)
         plt.show()
@@ -303,3 +315,47 @@ def calculateNativeToCCFTransform(sample, coorType='polygon_center',
         ax[2].set_title('Calculated over CCF')
         plt.show()
     return x[0]
+
+def viewCellTypeInSample(sample, cellType=None):
+    if cellType == None:
+        fig,ax = plt.subplots(1,1)
+        cellTypeScatter = ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=sample['cellTypeClassColorHex'], s=2, linewidth=0)
+        ax.yaxis.set_inverted(True)
+        plt.axis('off')
+        plt.title('All cell types')
+        plt.show()
+    elif len(cellType) == 1:
+        try:
+            cellTypeIdx = sample['cellTypeClassNames'].index(cellType[0])
+            cellTypeMask = np.where(sample['cellTypeClassInt'] == cellTypeIdx)[0]
+            bgColor = np.zeros_like(sample['cellTypeClassInt'], dtype=np.dtype('U7'))
+            bgColor[:] = '#808080'
+            fig,ax = plt.subplots(1,1)
+            ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=bgColor, s=2, linewidth=0, alpha=0.4)
+            cellTypeScatter = ax.scatter(sample['ccfCoordinates'][cellTypeMask,2], sample['ccfCoordinates'][cellTypeMask,1], c=sample['cellTypeClassColorHex'][cellTypeMask], s=2, linewidth=0)
+            ax.yaxis.set_inverted(True)
+            plt.axis('off')
+            plt.title(cellType[0])
+            plt.show()
+        except ValueError:
+            print(f'{cellType} not in list')
+    elif len(cellType) > 1:
+        fig,ax = plt.subplots(1,1)
+        bgColor = np.zeros_like(sample['cellTypeClassInt'], dtype=np.dtype('U7'))
+        bgColor[:] = '#808080'
+        ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=bgColor, s=2, linewidth=0, alpha=0.4)
+        titleString = 'Cell types: '
+        for actCellType in range(len(cellType)):
+            try:
+                cellTypeIdx = sample['cellTypeClassNames'].index(cellType[actCellType])
+                cellTypeMask = np.where(sample['cellTypeClassInt'] == cellTypeIdx)[0]
+                print(len(cellTypeMask))
+                cellTypeScatter = ax.scatter(sample['ccfCoordinates'][cellTypeMask,2], sample['ccfCoordinates'][cellTypeMask,1], c=sample['cellTypeClassColorHex'][cellTypeMask], s=2, linewidth=0)                
+                print(sample['cellTypeClassColorHex'][cellTypeMask])
+                titleString = titleString + cellType[actCellType] + ' '
+            except ValueError:
+                print(f'{cellType} not in list')
+        ax.yaxis.set_inverted(True)
+        plt.axis('off')
+        plt.title(titleString)
+        plt.show()

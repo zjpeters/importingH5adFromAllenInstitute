@@ -24,7 +24,7 @@ import scipy.sparse as sp_sparse
 # from sklearn.metrics import silhouette_samples, silhouette_score
 import nibabel as nib
 sys.path.insert(0, os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','code'))
-# sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
+sys.path.insert(0,'/media/zjpeters/Expansion/merscopeDataFromAllenInstitute/code')
 import allenMerscopeCode
 import cv2
 import nibabel as nib
@@ -38,9 +38,9 @@ stanlyLoc = os.path.join('C:',os.sep, 'Users','onyh19ug', 'Documents', 'STANLY',
 sourcedata = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','sourcedata')
 derivatives = os.path.join('D:',os.sep, 'merscopeDataFromAllenInstitute','derivatives')
 # linux locations
-# stanlyLoc = os.path.join('/', 'home', 'zjpeters', 'Documents', 'stanly', 'code')
-# sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
-# derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
+stanlyLoc = os.path.join('/', 'home', 'zjpeters', 'Documents', 'stanly', 'code')
+sourcedata = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','sourcedata')
+derivatives = os.path.join('/','media','zjpeters','Expansion','merscopeDataFromAllenInstitute','derivatives')
 
 affMatrix = np.array([[-0, -0, 0.025, -5.7],[-0.25, -0, -0, 5.3], [0, -0.025, 0, 5.175], [0,0,0,1]])
 
