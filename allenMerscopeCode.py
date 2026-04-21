@@ -11,6 +11,10 @@ from scipy.sparse import csr_matrix
 import scipy.sparse as sp_sparse
 import numpy as np
 from matplotlib import pyplot as plt
+import json
+import cv2
+from glob import glob
+import pandas as pd
 
 def loadEntireDatasetFromH5ad(h5adLocation):
     """
@@ -49,60 +53,61 @@ def loadEntireDatasetFromH5ad(h5adLocation):
     merscopeDataset = {'geneMatrix': gene_matrix, 'geneList': gene_list, 'tissuePositionCoordinates': tissue_coordinates, 'sliceCodes': slice_codes, 'ccfCoordinates': ccfCoordinates}
     return merscopeDataset
 
-def loadSingleSliceFromH5ad(h5adLocation, zCoord, displayScatter=False):
-    """
-    Loads a single slice from an h5ad formatted sample from the Allen Institute
+# def loadSingleSliceFromH5ad(h5adLocation, zCoord, displayScatter=False):
+#     """
+#     Loads a single slice from an h5ad formatted sample from the Allen Institute
 
-    Parameters
-    ----------
-    h5adLocation : str or file location
-        Where the allen data is stored.
-    zCoord : int
-        Slice location, multiple of 200, i.e. 0, 200, 400, ..., 10000
-    displayScatter : bool, optional
-        DESCRIPTION. The default is False.
+#     Parameters
+#     ----------
+#     h5adLocation : str or file location
+#         Where the allen data is stored.
+#     zCoord : int
+#         Slice location, multiple of 200, i.e. 0, 200, 400, ..., 10000
+#     displayScatter : bool, optional
+#         DESCRIPTION. The default is False.
 
-    Returns
-    -------
-    sample : TYPE
-        DESCRIPTION.
+#     Returns
+#     -------
+#     sample : TYPE
+#         DESCRIPTION.
 
-    """
-    sample = {}
-    f = h5py.File(h5adLocation)
-    x_attrs = dict(f['X'].attrs)
-    # slice_codes = (f['obs']['brain_section_barcode']['codes'][:])
-    # slice_codes = f['obs']['section']['codes'][:]
-    sample['z_coord'] = f['obs']['z_coord'][:]
-    sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
-    sample['z_coord'] = f['obs']['z_coord'][sliceIdx]
-    try:
-        gene_matrix = csr_matrix((f['X']['data'],f['X']['indices'],f['X']['indptr']),x_attrs['shape'])
-        sample['geneMatrix'] = gene_matrix[sliceIdx,:]
-    except ValueError:
-        sample['geneMatrix'] = csr_matrix(f['X'][sliceIdx,:])
-    sample['geneList'] = list(np.array(f['var']['_index']))
-    # convert byte strings to strings
-    for i in range(len(sample['geneList'])):
-        sample['geneList'][i] = sample['geneList'][i].decode("utf-8")
-    sample['tissuePositionCoordinates'] = f['obsm']['spatial'][sliceIdx,0:2]
+#     """
+#     sample = {}
+#     f = h5py.File(h5adLocation)
+#     x_attrs = dict(f['X'].attrs)
+#     # slice_codes = (f['obs']['brain_section_barcode']['codes'][:])
+#     # slice_codes = f['obs']['section']['codes'][:]
+#     sample['z_coord'] = f['obs']['z_coord'][:]
+#     sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
+#     ### could reduce this to a single value, rather than an array of repeats
+#     sample['z_coord'] = f['obs']['z_coord'][sliceIdx]
+#     try:
+#         gene_matrix = csr_matrix((f['X']['data'],f['X']['indices'],f['X']['indptr']),x_attrs['shape'])
+#         sample['geneMatrix'] = gene_matrix[sliceIdx,:]
+#     except ValueError:
+#         sample['geneMatrix'] = csr_matrix(f['X'][sliceIdx,:])
+#     sample['geneList'] = list(np.array(f['var']['_index']))
+#     # convert byte strings to strings
+#     for i in range(len(sample['geneList'])):
+#         sample['geneList'][i] = sample['geneList'][i].decode("utf-8")
+#     sample['tissuePositionCoordinates'] = f['obsm']['spatial'][sliceIdx,0:2]
     
-    x_CCF = f['obs']['x_CCF'][:]
-    y_CCF = f['obs']['y_CCF'][:]
-    z_CCF = f['obs']['z_CCF'][:]    
-    sample['ccfCoordinates'] = np.array([x_CCF[sliceIdx], y_CCF[sliceIdx], z_CCF[sliceIdx]]).T
-    f.close()
-    if displayScatter == True:
-        fig,ax = plt.subplots(1,1)
-        ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1])
-        ax.yaxis.set_inverted(True)
-        plt.show()
-        # plt.figure()
-        # plt.scatter(sample['tissuePositionCoordinates'][:,0], sample['tissuePositionCoordinates'][:,1], s=3)
-        # plt.show()
-    return sample
-
-def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, removeNaNs=True):
+#     x_CCF = f['obs']['x_CCF'][:]
+#     y_CCF = f['obs']['y_CCF'][:]
+#     z_CCF = f['obs']['z_CCF'][:]    
+#     sample['ccfCoordinates'] = np.array([x_CCF[sliceIdx], y_CCF[sliceIdx], z_CCF[sliceIdx]]).T
+#     f.close()
+#     if displayScatter == True:
+#         fig,ax = plt.subplots(1,1)
+#         ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1])
+#         ax.yaxis.set_inverted(True)
+#         plt.show()
+#         # plt.figure()
+#         # plt.scatter(sample['tissuePositionCoordinates'][:,0], sample['tissuePositionCoordinates'][:,1], s=3)
+#         # plt.show()
+#     return sample
+### with updates, the above code should not be necessary, will delete later
+def loadSingleSliceFromH5ad(h5adLocation, zCoord, displayScatter=False, removeNaNs=True):
     """
     Loads a single slice from an h5ad formatted sample from the Allen Institute
 
@@ -128,17 +133,18 @@ def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, rem
     # slice_codes = f['obs']['brain_section_label']['codes'][:]
     # sliceIdx = np.where(slice_codes == sliceNumber)[0]
     sample['original_filename'] = h5adLocation.split(os.sep)[-1]
-    sample['z_coord'] = f['obs']['z_coord'][:]
+    z_coord_list = f['obs']['z_coord'][:]
+    sliceIdx = np.where(z_coord_list == zCoord)[0]
+    sample['z_coord'] = z_coord_list[sliceIdx[0]]
     # sex and age are stored as strings in the categories section
     sample['sex'] = f['obs']['sex']['categories'][0].decode("utf-8")
     sample['age'] = f['obs']['age']['categories'][0].decode("utf-8")
-    sliceIdx = np.where(sample['z_coord'] == zCoord)[0]
+    
     sample['polygon_center'] = np.array([f['obs']['polygon_center_x'][sliceIdx], f['obs']['polygon_center_y'][sliceIdx], f['obs']['polygon_center_z'][sliceIdx]]).T
     if removeNaNs==True:
         nanMask = np.any(~np.isnan(sample['polygon_center']), axis=1)
         sliceIdx = sliceIdx[nanMask]
         sample['polygon_center'] = np.array([f['obs']['polygon_center_x'][sliceIdx], f['obs']['polygon_center_y'][sliceIdx], f['obs']['polygon_center_z'][sliceIdx]]).T
-    sample['z_coord'] = f['obs']['z_coord'][sliceIdx]
     try:
         gene_matrix = csr_matrix((f['X']['data'],f['X']['indices'],f['X']['indptr']),x_attrs['shape'])
         sample['geneMatrix'] = gene_matrix[sliceIdx,:]
@@ -165,7 +171,7 @@ def loadSingleSliceFromDatedH5ad(h5adLocation, zCoord, displayScatter=False, rem
     f.close()
     if displayScatter == True:
         fig,ax = plt.subplots(1,1)
-        ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1])
+        ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], s=2, linewidth=0)
         ax.yaxis.set_inverted(True)
         plt.show()
         # plt.figure()
@@ -317,6 +323,21 @@ def calculateNativeToCCFTransform(sample, coorType='polygon_center',
     return x[0]
 
 def viewCellTypeInSample(sample, cellType=None):
+    """
+    
+
+    Parameters
+    ----------
+    sample : TYPE
+        DESCRIPTION.
+    cellType : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Returns
+    -------
+    None.
+
+    """
     if cellType == None:
         fig,ax = plt.subplots(1,1)
         cellTypeScatter = ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=sample['cellTypeClassColorHex'], s=2, linewidth=0)
@@ -324,7 +345,22 @@ def viewCellTypeInSample(sample, cellType=None):
         plt.axis('off')
         plt.title('All cell types')
         plt.show()
-    elif len(cellType) == 1:
+    elif type(cellType) == str:
+        try:
+            cellTypeIdx = sample['cellTypeClassNames'].index(cellType)
+            cellTypeMask = np.where(sample['cellTypeClassInt'] == cellTypeIdx)[0]
+            bgColor = np.zeros_like(sample['cellTypeClassInt'], dtype=np.dtype('U7'))
+            bgColor[:] = '#808080'
+            fig,ax = plt.subplots(1,1)
+            ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=bgColor, s=2, linewidth=0, alpha=0.4)
+            cellTypeScatter = ax.scatter(sample['ccfCoordinates'][cellTypeMask,2], sample['ccfCoordinates'][cellTypeMask,1], c=sample['cellTypeClassColorHex'][cellTypeMask], s=2, linewidth=0)
+            ax.yaxis.set_inverted(True)
+            plt.axis('off')
+            plt.title(cellType[0])
+            plt.show()
+        except ValueError:
+            print(f'{cellType} not in list')
+    elif type(cellType) == list and len(cellType) == 1:
         try:
             cellTypeIdx = sample['cellTypeClassNames'].index(cellType[0])
             cellTypeMask = np.where(sample['cellTypeClassInt'] == cellTypeIdx)[0]
@@ -338,8 +374,32 @@ def viewCellTypeInSample(sample, cellType=None):
             plt.title(cellType[0])
             plt.show()
         except ValueError:
+            print('searching')
+            fig,ax = plt.subplots(1,1)
+            bgColor = np.zeros_like(sample['cellTypeClassInt'], dtype=np.dtype('U7'))
+            bgColor[:] = '#808080'
+            ax.scatter(sample['ccfCoordinates'][:,2], sample['ccfCoordinates'][:,1], c=bgColor, s=2, linewidth=0, alpha=0.4)
+            titleString = 'Cell types: '
+            listOfCellTypes = []
+            for actCellType in sample['cellTypeClassNames']:
+                print(actCellType)
+                mainCellType = actCellType.split(' ')[-1]
+                if mainCellType == cellType[0]:
+                    print(actCellType)
+                    listOfCellTypes.append(actCellType)
+            for actCellType in range(len(listOfCellTypes)):
+                try:
+                    cellTypeIdx = sample['cellTypeClassNames'].index(listOfCellTypes[actCellType])
+                    cellTypeMask = np.where(sample['cellTypeClassInt'] == cellTypeIdx)[0]
+                    print(len(cellTypeMask))
+                    cellTypeScatter = ax.scatter(sample['ccfCoordinates'][cellTypeMask,2], sample['ccfCoordinates'][cellTypeMask,1], c=sample['cellTypeClassColorHex'][cellTypeMask], s=2, linewidth=0)                
+                    print(sample['cellTypeClassColorHex'][cellTypeMask])
+                    titleString = titleString + cellType[actCellType] + ' '
+                except ValueError:
+                    print(f'{cellType} not in list')
+        except ValueError:
             print(f'{cellType} not in list')
-    elif len(cellType) > 1:
+    elif type(cellType) == list and len(cellType) > 1:
         fig,ax = plt.subplots(1,1)
         bgColor = np.zeros_like(sample['cellTypeClassInt'], dtype=np.dtype('U7'))
         bgColor[:] = '#808080'
@@ -359,3 +419,365 @@ def viewCellTypeInSample(sample, cellType=None):
         plt.axis('off')
         plt.title(titleString)
         plt.show()
+        
+#%% create function to load split samples
+def loadSplitSingleHemisphereSamples(save_path):
+    """
+    Loads samples created by the function splitSingleHemisphereSamples
+
+    Parameters
+    ----------
+    save_path : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    sample : TYPE
+        DESCRIPTION.
+
+    """
+    sample = {}
+    jsonLoc = glob(os.path.join(save_path, "*_processing_information.json"))[0]
+    with open(jsonLoc) as jsonData:
+        jsonDict = json.loads(jsonData.read())
+        sample['sampleID'] = jsonDict['sampleID']
+        sample['save_path'] = save_path
+        sample['age'] = jsonDict['age']
+        sample['sex'] = jsonDict['sex']
+        sample['original_filename'] = jsonDict['original_filename']
+        sample['z_coord'] = int(jsonDict['z_coord'])
+        sample['geneList'] = jsonDict['geneList']
+        sample['cellTypeClassNames'] = jsonDict['cellTypeClassNames']
+        sample['original_hemisphere'] = jsonDict['original_hemisphere']
+        sample['flip_bool'] = jsonDict['flip_bool']
+    ccfCoorCsvLoc = glob(os.path.join(save_path, "*ccf_coordinates.csv"))[0]
+    ccfCsvData = pd.read_csv(ccfCoorCsvLoc)
+    sample['ccfCoordinates'] = np.array([ccfCsvData['x_CCF'], ccfCsvData['y_CCF'], ccfCsvData['z_CCF']]).T
+    sample['cellTypeClassInt'] = np.array(ccfCsvData['cellTypeClassInt'], dtype='int32')
+    sample['cellTypeClassColorHex'] = np.array(ccfCsvData['cellTypeClassColorHex'], dtype=np.dtype('U7'))
+    sample['ccfID'] = np.array(ccfCsvData['ccfID'], dtype='int64')
+    imageLoc = glob(os.path.join(save_path, "*_gene_image.png"))[0]
+    sample['gene_image'] = cv2.imread(imageLoc, cv2.IMREAD_GRAYSCALE)
+    geneMatrixLoc = glob(os.path.join(save_path, "*_gene_matrix.npz"))[0]
+    sample['geneMatrix'] = sp_sparse.load_npz(geneMatrixLoc)
+    return sample
+
+def loadSingleSliceSample(save_path):
+    """
+    Loads samples created by the function splitSingleHemisphereSamples
+
+    Parameters
+    ----------
+    save_path : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    sample : TYPE
+        DESCRIPTION.
+
+    """
+    sample = {}
+    jsonLoc = glob(os.path.join(save_path, "*_processing_information.json"))[0]
+    with open(jsonLoc) as jsonData:
+        jsonDict = json.loads(jsonData.read())
+        sample['sampleID'] = jsonDict['sampleID']
+        sample['save_path'] = save_path
+        sample['age'] = jsonDict['age']
+        sample['sex'] = jsonDict['sex']
+        sample['original_filename'] = jsonDict['original_filename']
+        sample['z_coord'] = int(jsonDict['z_coord'])
+        sample['geneList'] = jsonDict['geneList']
+        sample['cellTypeClassNames'] = jsonDict['cellTypeClassNames']
+    ccfCoorCsvLoc = glob(os.path.join(save_path, "*ccf_coordinates.csv"))[0]
+    ccfCsvData = pd.read_csv(ccfCoorCsvLoc)
+    sample['ccfCoordinates'] = np.array([ccfCsvData['x_CCF'], ccfCsvData['y_CCF'], ccfCsvData['z_CCF']]).T
+    sample['cellTypeClassInt'] = np.array(ccfCsvData['cellTypeClassInt'], dtype='int32')
+    sample['cellTypeClassColorHex'] = np.array(ccfCsvData['cellTypeClassColorHex'], dtype=np.dtype('U7'))
+    sample['ccfID'] = np.array(ccfCsvData['ccfID'], dtype='int64')
+    imageLoc = glob(os.path.join(save_path, "*_gene_image.png"))[0]
+    sample['gene_image'] = cv2.imread(imageLoc, cv2.IMREAD_GRAYSCALE)
+    geneMatrixLoc = glob(os.path.join(save_path, "*_gene_matrix.npz"))[0]
+    sample['geneMatrix'] = sp_sparse.load_npz(geneMatrixLoc)
+    return sample
+
+
+#%% create function that flips one hemisphere and creates new sample
+# splitting the sample will create two samples, one for each hemisphere
+# need to save information about which sample is flipped
+def splitSingleHemisphereSamples(sample, save_path, hemisphere_to_match='left',
+                                 plot_samples=False, midline_x=228, geneListForGeneimage=None):
+    """
+    Splits a single slice from the Allen merscope data into left and right
+    hemispheres and flips one to match the space of the other to allow registration.
+
+    Parameters
+    ----------
+    sample : dict
+        Sample dictionary created by 'loadSingleSliceFromH5ad'.
+    save_path : path
+        Location to save data to. This function will create two new folders, one
+        for the left and one for the right hemisphere.
+    hemisphere_to_match : str, optional
+        Which hemisphere should be the target for flipping. The default is 'left'.
+    plot_samples : bool, optional
+        Whether to display a scatter plot of the two hemispheres. The default is False.
+    midline_x : int, optional
+        The midline about which the images will be flipped. The default is 228.
+
+    Returns
+    -------
+    sampleRightHem : dict
+        A sample dictionary similar to that created by 'loadSingleSliceFromH5ad',
+        but excluding the tissuePositionList and polygon_centers variables.
+    sampleLeftHem : dict
+        A sample dictionary similar to that created by 'loadSingleSliceFromH5ad',
+        but excluding the tissuePositionList and polygon_centers variables.
+
+    """
+    # assumes there are no periods used in the naming of the files
+    outputBasenameRight = f"{sample['original_filename'].split('.')[0]}_{sample['z_coord']}_right_hemisphere"
+    outputPathRight = os.path.join(save_path, outputBasenameRight)
+    outputBasenameLeft = f"{sample['original_filename'].split('.')[0]}_{sample['z_coord']}_left_hemisphere"
+    outputPathLeft = os.path.join(save_path, outputBasenameLeft)
+    # checks whether files already exist
+    if not os.path.exists(outputPathRight) or not os.path.exists(outputPathRight):
+        print(f"Splitting hemispheres of from: \n {sample['original_filename']}, z_coord: {sample['z_coord']}")
+        # create output folders
+        os.makedirs(outputPathRight)
+        os.makedirs(outputPathLeft)
+        # generate gene image
+        if geneListForGeneimage == None:
+            geneListForGeneImage = ['Prdm12', 'Mal', 'Nts', 'Cbln1', 'Col1a1', 'Cdh13', 'Ramp1', 'Rgs6', 'Gpr88', 'Rorb', 'Slc17a7', 'Pou3f1', 'Zfpm2', 'Pvalb', 'Slc1a3']
+            geneImage = displaySingleSliceGeneImageCCF(sample, geneListForGeneImage, displayImage=False)[:,0:456]
+        # this function will use the ccf coordinates rather than tissue positions/polygon centers
+        midline_y = 264
+        # transformation for flipping, assumes no rotation needed
+        flipMat = np.array([[-1, 0],\
+                            [0, 1]])
+        origin = np.array([midline_x, midline_y])
+        # copy over data that will remain the same after flipping
+        # create right hem dictionary
+        sampleRightHem = {}
+        sampleRightHem['sampleID'] = outputBasenameRight
+        sampleRightHem['save_path'] = outputPathRight
+        sampleRightHem['age'] = sample['age']
+        sampleRightHem['sex'] = sample['sex']
+        sampleRightHem['original_filename'] = sample['original_filename']
+        sampleRightHem['z_coord'] = sample['z_coord']
+        sampleRightHem['geneList'] = sample['geneList']
+        sampleRightHem['cellTypeClassNames'] = sample['cellTypeClassNames']
+        sampleRightHem['original_hemisphere'] = 'right' 
+        # create left hem dictionary
+        sampleLeftHem = {}
+        sampleLeftHem['sampleID'] = outputBasenameLeft
+        sampleLeftHem['save_path'] = outputPathLeft
+        sampleLeftHem['age'] = sample['age']
+        sampleLeftHem['sex'] = sample['sex']
+        sampleLeftHem['original_filename'] = sample['original_filename']
+        sampleLeftHem['z_coord'] = sample['z_coord']
+        sampleLeftHem['geneList'] = sample['geneList']
+        sampleLeftHem['cellTypeClassNames'] = sample['cellTypeClassNames']
+        sampleLeftHem['original_hemisphere'] = 'left' 
+        # generate masks for left and right hemisphere
+        rightHemCoordinateMask = np.where(sample['ccfCoordinates'][:,2] > midline_x)[0]
+        leftHemCoordinateMask = np.where(sample['ccfCoordinates'][:,2] < midline_x)[0]
+        sampleRightHem['ccfID'] = sample['ccfID'][rightHemCoordinateMask]
+        sampleRightHem['cellTypeClassColorHex'] = sample['cellTypeClassColorHex'][rightHemCoordinateMask]
+        sampleRightHem['cellTypeClassInt'] = sample['cellTypeClassInt'][rightHemCoordinateMask]
+        sampleRightHem['geneMatrix'] = sample['geneMatrix'][rightHemCoordinateMask, :]
+        
+        sampleLeftHem['ccfID'] = sample['ccfID'][leftHemCoordinateMask]
+        sampleLeftHem['cellTypeClassColorHex'] = sample['cellTypeClassColorHex'][leftHemCoordinateMask]
+        sampleLeftHem['cellTypeClassInt'] = sample['cellTypeClassInt'][leftHemCoordinateMask]
+        sampleLeftHem['geneMatrix'] = sample['geneMatrix'][leftHemCoordinateMask, :]
+        
+        # leftHemCoor = np.array([sample['ccfCoordinates'][leftHemCoordinateMask,2], sample['ccfCoordinates'][leftHemCoordinateMask,1]]).T
+        # rightHemCoor = np.array([sample['ccfCoordinates'][rightHemCoordinateMask,2], sample['ccfCoordinates'][rightHemCoordinateMask,1]]).T
+        
+        if hemisphere_to_match == 'left':
+            leftHemImage = geneImage.copy()
+            rightHemImage = geneImage.copy()
+            leftHemImage[:, 228:456] = 0
+            rightHemImage[:, 0:228] = 0
+            coorFlip = np.array([sample['ccfCoordinates'][rightHemCoordinateMask,2], sample['ccfCoordinates'][rightHemCoordinateMask,1]]).T - origin
+            coorFlip = np.matmul(coorFlip, flipMat)
+            coorFlip = coorFlip + origin
+            sampleRightHem['ccfCoordinates'] = np.array([sample['ccfCoordinates'][rightHemCoordinateMask, 0], coorFlip[:,1].T, coorFlip[:,0].T]).T
+            sampleRightHem['flip_bool'] = True
+            sampleRightHem['gene_image'] = rightHemImage[:,::-1]
+            sampleLeftHem['ccfCoordinates'] = np.array([sample['ccfCoordinates'][leftHemCoordinateMask,0], sample['ccfCoordinates'][leftHemCoordinateMask,1], sample['ccfCoordinates'][leftHemCoordinateMask,2]]).T
+            sampleLeftHem['flip_bool'] =  False
+            sampleLeftHem['gene_image'] = leftHemImage
+        elif hemisphere_to_match == 'right':
+            leftHemImage = geneImage.copy()
+            rightHemImage = geneImage.copy()
+            leftHemImage[:, 0:228] = 0
+            rightHemImage[:, 228:456] = 0
+            coorFlip = np.array([sample['ccfCoordinates'][leftHemCoordinateMask,2], sample['ccfCoordinates'][leftHemCoordinateMask,1]]).T - origin
+            coorFlip = np.matmul(coorFlip, flipMat)
+            coorFlip = coorFlip + origin
+            sampleRightHem['ccfCoordinates'] = np.array([sample['ccfCoordinates'][rightHemCoordinateMask,0], sample['ccfCoordinates'][rightHemCoordinateMask,1], sample['ccfCoordinates'][rightHemCoordinateMask,2]]).T
+            sampleRightHem['flip_bool'] = False
+            sampleRightHem['gene_image'] = rightHemImage
+            sampleLeftHem['ccfCoordinates'] = np.array([sample['ccfCoordinates'][leftHemCoordinateMask,0], coorFlip[:,1].T, coorFlip[:,0].T]).T
+            sampleLeftHem['flip_bool'] =  True
+            sampleLeftHem['gene_image'] = leftHemImage[:,::-1]
+        
+        # save data
+        sampleDataDictRight = {
+            "original_filename": sampleRightHem['original_filename'],
+            "age": sampleRightHem['age'],
+            "sex": sampleRightHem['sex'],
+            "z_coord": f"{sampleRightHem['z_coord']}",
+            "geneList": sampleRightHem['geneList'],
+            "cellTypeClassNames": sampleRightHem['cellTypeClassNames'],
+            "original_hemisphere": "right",
+            "flip_bool": sampleRightHem['flip_bool']
+        }
+        # Serializing json
+        json_object = json.dumps(sampleDataDictRight, indent=4)
+         
+        # Writing to processing_information.json
+        with open(os.path.join(outputPathRight, f"{outputBasenameRight}_processing_information.json"), "w") as outfile:
+            outfile.write(json_object)
+        # writes ccf coordinates to .csv and gene matrix to .npz file
+        
+        pts = {'x_CCF': sampleRightHem['ccfCoordinates'][:,0], 'y_CCF': sampleRightHem['ccfCoordinates'][:,1], 'z_CCF': sampleRightHem['ccfCoordinates'][:,2], "cellTypeClassInt": sampleRightHem['cellTypeClassInt'], "cellTypeClassColorHex": sampleRightHem['cellTypeClassColorHex'], "ccfID": sampleRightHem['ccfID']}
+        pts = pd.DataFrame(pts)
+        pts.to_csv(os.path.join(outputPathRight, f"{outputBasenameRight}_ccf_coordinates.csv"), index=False)
+        sp_sparse.save_npz(os.path.join(outputPathRight, f"{outputBasenameRight}_gene_matrix"), sampleRightHem['geneMatrix'])
+        cv2.imwrite(os.path.join(outputPathRight, f"{outputBasenameRight}_gene_image.png"), sampleRightHem['gene_image'])
+            
+        sampleDataDictLeft = {
+            "original_filename": sampleLeftHem['original_filename'],
+            "age": sampleLeftHem['age'],
+            "sex": sampleLeftHem['sex'],
+            "z_coord": f"{sampleLeftHem['z_coord']}",
+            "geneList": sampleLeftHem['geneList'],
+            "cellTypeClassNames": sampleLeftHem['cellTypeClassNames'],
+            "original_hemisphere": "left",
+            "flip_bool": sampleLeftHem['flip_bool']
+        }
+        # Serializing json
+        json_object = json.dumps(sampleDataDictLeft, indent=4)
+         
+        # Writing to processing_information.json
+        with open(os.path.join(outputPathLeft, f"{outputBasenameLeft}_processing_information.json"), "w") as outfile:
+            outfile.write(json_object)
+        # writes ccf coordinates to .csv and gene matrix to .npz file
+        pts = {'x_CCF': sampleLeftHem['ccfCoordinates'][:,0], 'y_CCF': sampleLeftHem['ccfCoordinates'][:,1], 'z_CCF': sampleLeftHem['ccfCoordinates'][:,2], "cellTypeClassInt": sampleLeftHem['cellTypeClassInt'], "cellTypeClassColorHex": sampleLeftHem['cellTypeClassColorHex'], "ccfID": sampleLeftHem['ccfID']}
+        pts = pd.DataFrame(pts)
+        pts.to_csv(os.path.join(outputPathLeft, f"{outputBasenameLeft}_ccf_coordinates.csv"), index=False)
+        sp_sparse.save_npz(os.path.join(outputPathLeft, f"{outputBasenameLeft}_gene_matrix"), sampleLeftHem['geneMatrix'])
+        cv2.imwrite(os.path.join(outputPathLeft, f"{outputBasenameLeft}_gene_image.png"), sampleLeftHem['gene_image'])
+    else:
+        print(f"Samples have already been created for {sample['original_filename']}.\n Loading now")
+        sampleRightHem = loadSplitSingleHemisphereSamples(outputPathRight)
+        sampleLeftHem = loadSplitSingleHemisphereSamples(outputPathLeft)
+    if plot_samples == True:
+        fig, ax = plt.subplots(1,1)
+        ax.scatter(sampleLeftHem['ccfCoordinates'][:,2], sampleLeftHem['ccfCoordinates'][:,1], s=2, linewidth=0, label='Left hemisphere')
+        ax.scatter(sampleRightHem['ccfCoordinates'][:,2], sampleRightHem['ccfCoordinates'][:,1], s=2, linewidth=0, alpha=0.4, label='Right hemisphere')
+        ax.yaxis.set_inverted(True)
+        if hemisphere_to_match == "left":
+            lgnd = plt.legend(loc="upper left", scatterpoints=1, fontsize=10)
+        elif hemisphere_to_match == "right":
+            lgnd = plt.legend(loc="upper right", scatterpoints=1, fontsize=10)
+        lgnd.legend_handles[0]._sizes = [30]
+        lgnd.legend_handles[1]._sizes = [30]
+        plt.show()
+    return sampleRightHem, sampleLeftHem
+
+def createSampleFromSlice(sample, save_path, sampleID=None, 
+                          plot_samples=False, geneListForGeneimage=None):
+    """
+    Splits a single slice from the Allen merscope data into left and right
+    hemispheres and flips one to match the space of the other to allow registration.
+
+    Parameters
+    ----------
+    sample : dict
+        Sample dictionary created by 'loadSingleSliceFromH5ad'.
+    save_path : path
+        Location to save data to. This function will create two new folders, one
+        for the left and one for the right hemisphere.
+    hemisphere_to_match : str, optional
+        Which hemisphere should be the target for flipping. The default is 'left'.
+    plot_samples : bool, optional
+        Whether to display a scatter plot of the two hemispheres. The default is False.
+    midline_x : int, optional
+        The midline about which the images will be flipped. The default is 228.
+
+    Returns
+    -------
+    sampleSlice : dict
+        A sample dictionary similar to that created by 'loadSingleSliceFromH5ad',
+        but excluding the tissuePositionList and polygon_centers variables.
+
+
+    """
+    # assumes there are no periods used in the naming of the files
+    outputBasename = f"{sample['original_filename'].split('.')[0]}_{sample['z_coord']}"
+    outputPath = os.path.join(save_path, outputBasename)
+    
+    # checks whether files already exist
+    if not os.path.exists(outputPath):
+        print(f"Splitting hemispheres of from: \n {sample['original_filename']}, z_coord: {sample['z_coord']}")
+        # create output folders
+        os.makedirs(outputPath)
+        # generate gene image
+        if geneListForGeneimage == None:
+            geneListForGeneImage = ['Prdm12', 'Mal', 'Nts', 'Cbln1', 'Col1a1', 'Cdh13', 'Ramp1', 'Rgs6', 'Gpr88', 'Rorb', 'Slc17a7', 'Pou3f1', 'Zfpm2', 'Pvalb', 'Slc1a3']
+            geneImage = displaySingleSliceGeneImageCCF(sample, geneListForGeneImage, displayImage=False)[:,0:456]
+        
+        # create right hem dictionary
+        sampleSlice = {}
+        sampleSlice['sampleID'] = outputBasename
+        sampleSlice['save_path'] = outputPath
+        sampleSlice['age'] = sample['age']
+        sampleSlice['sex'] = sample['sex']
+        sampleSlice['original_filename'] = sample['original_filename']
+        sampleSlice['z_coord'] = sample['z_coord']
+        sampleSlice['geneList'] = sample['geneList']
+        sampleSlice['cellTypeClassNames'] = sample['cellTypeClassNames']
+        sampleSlice['original_hemisphere'] = 'right' 
+        sampleSlice['ccfID'] = sample['ccfID']
+        sampleSlice['cellTypeClassColorHex'] = sample['cellTypeClassColorHex']
+        sampleSlice['cellTypeClassInt'] = sample['cellTypeClassInt']
+        sampleSlice['geneMatrix'] = sample['geneMatrix']
+        sampleSlice['ccfCoordinates'] = np.array([sample['ccfCoordinates'][:, 0], sample['ccfCoordinates'][:, 1], sample['ccfCoordinates'][:, 2]]).T
+        sampleSlice['gene_image'] = geneImage
+
+        # save data
+        sampleDataDict = {
+            "original_filename": sampleSlice['original_filename'],
+            "age": sampleSlice['age'],
+            "sex": sampleSlice['sex'],
+            "z_coord": f"{sampleSlice['z_coord']}",
+            "geneList": sampleSlice['geneList'],
+            "cellTypeClassNames": sampleSlice['cellTypeClassNames']
+        }
+        # Serializing json
+        json_object = json.dumps(sampleDataDict, indent=4)
+         
+        # Writing to processing_information.json
+        with open(os.path.join(outputPath, f"{outputBasename}_processing_information.json"), "w") as outfile:
+            outfile.write(json_object)
+        # writes ccf coordinates to .csv and gene matrix to .npz file
+        
+        pts = {'x_CCF': sampleSlice['ccfCoordinates'][:,0], 'y_CCF': sampleSlice['ccfCoordinates'][:,1], 'z_CCF': sampleSlice['ccfCoordinates'][:,2], "cellTypeClassInt": sampleSlice['cellTypeClassInt'], "cellTypeClassColorHex": sampleSlice['cellTypeClassColorHex'], "ccfID": sampleSlice['ccfID']}
+        pts = pd.DataFrame(pts)
+        pts.to_csv(os.path.join(outputPath, f"{outputBasename}_ccf_coordinates.csv"), index=False)
+        sp_sparse.save_npz(os.path.join(outputPath, f"{outputBasename}_gene_matrix"), sampleSlice['geneMatrix'])
+        cv2.imwrite(os.path.join(outputPath, f"{outputBasename}_gene_image.png"), sampleSlice['gene_image'])
+            
+    else:
+        print(f"Samples have already been created for {sample['original_filename']}.\n Loading now")
+        sampleSlice = loadSingleSliceSample(outputPath)
+    if plot_samples == True:
+        fig, ax = plt.subplots(1,1)
+        ax.scatter(sampleSlice['ccfCoordinates'][:,2], sampleSlice['ccfCoordinates'][:,1], s=2, linewidth=0, label='Left hemisphere')
+        ax.yaxis.set_inverted(True)
+        plt.show()
+    return sampleSlice
